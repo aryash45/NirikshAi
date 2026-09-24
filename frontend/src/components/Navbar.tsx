@@ -2,8 +2,8 @@ import React from 'react';
 
 interface NavbarProps {
   onOpenLegal: () => void;
-  activeTab: 'console' | 'cctv' | 'audit';
-  onSelectTab: (tab: 'console' | 'cctv' | 'audit') => void;
+  activeTab: 'console' | 'cctv' | 'field-inspector';
+  onSelectTab: (tab: 'console' | 'cctv' | 'field-inspector') => void;
   isBackendConnected: boolean;
 }
 
@@ -95,6 +95,35 @@ export const Navbar: React.FC<NavbarProps> = ({
             }}
           >
             CCTV Verification
+          </button>
+          <button
+            onClick={() => onSelectTab('field-inspector')}
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: '6px 12px',
+              fontSize: '0.88rem',
+              fontWeight: activeTab === 'field-inspector' ? 600 : 400,
+              color: activeTab === 'field-inspector' ? 'var(--text-primary)' : 'var(--text-secondary)',
+              borderBottom: activeTab === 'field-inspector' ? '2px solid var(--accent)' : '2px solid transparent',
+              cursor: 'pointer',
+              transition: 'color var(--transition-fast)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <span>📱 Field Inspector App</span>
+            <span style={{
+              fontSize: '0.68rem',
+              padding: '1px 5px',
+              borderRadius: 'var(--radius-xs)',
+              backgroundColor: 'var(--accent-subtle)',
+              color: 'var(--accent)',
+              fontWeight: 600,
+            }}>
+              PWA Mode
+            </span>
           </button>
         </nav>
 

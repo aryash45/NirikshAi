@@ -16,6 +16,7 @@ import { StatsOverview } from './components/StatsOverview';
 import { InstitutionList } from './components/InstitutionList';
 import { InstitutionDetail } from './components/InstitutionDetail';
 import { CctvSection } from './components/CctvSection';
+import { MobileFieldInspector } from './components/MobileFieldInspector';
 import { LegalModal } from './components/LegalModal';
 
 export const App: React.FC = () => {
@@ -24,7 +25,7 @@ export const App: React.FC = () => {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<InstitutionDetailType | null>(null);
 
-  const [activeTab, setActiveTab] = useState<'console' | 'cctv' | 'audit'>('console');
+  const [activeTab, setActiveTab] = useState<'console' | 'cctv' | 'field-inspector'>('console');
   const [legalOpen, setLegalOpen] = useState(false);
   const [isBackendConnected, setIsBackendConnected] = useState(false);
 
@@ -207,6 +208,13 @@ export const App: React.FC = () => {
 
           {activeTab === 'cctv' && (
             <CctvSection />
+          )}
+
+          {activeTab === 'field-inspector' && (
+            <MobileFieldInspector
+              institutions={institutions}
+              onInspectionCompleted={handleInspectionSuccess}
+            />
           )}
         </div>
       </main>

@@ -99,3 +99,71 @@ export interface CctvAnalysisResult {
   frames_analyzed: number;
   is_mock: boolean;
 }
+
+// ── Evidence Integrity & Field Audit ──────────────────────────────────────────
+
+export interface DuplicateAlert {
+  is_duplicate: boolean;
+  similarity_pct: number;
+  matched_institution: string | null;
+  original_inspection_date: string | null;
+  alert_message: string | null;
+}
+
+export interface ExifMetadata {
+  captured_at: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  device_model: string | null;
+  is_gps_valid: boolean;
+  gps_match_status: string;
+}
+
+export interface EvidenceValidationResult {
+  is_valid: boolean;
+  file_name: string;
+  file_size_kb: number;
+  sha256_hash: string;
+  perceptual_hash: string;
+  exif_telemetry: ExifMetadata;
+  duplicate_alert: DuplicateAlert;
+  integrity_status: 'AUTHENTIC' | 'SUSPECT_DUPLICATE' | 'GEO_TAMPERED';
+}
+
+export interface ChecklistItem {
+  id: string;
+  category: string;
+  label: string;
+  required: boolean;
+  evidence_required: boolean;
+}
+
+export interface SchemeChecklist {
+  scheme: string;
+  scheme_code: string;
+  items: ChecklistItem[];
+}
+
+export interface InspectorProfile {
+  id: number;
+  name: string;
+  badge_number: string;
+  state: string;
+  district: string;
+  active_workload: number;
+  rating: number;
+  conflict_free: boolean;
+}
+
+export interface InspectionScheduleResponse {
+  success: boolean;
+  institution_id: number;
+  institution_name: string;
+  risk_score: number;
+  risk_level: string;
+  priority_multiplier: number;
+  assigned_inspector: InspectorProfile;
+  dispatch_code: string;
+  scheduled_for: string;
+  message: string;
+}

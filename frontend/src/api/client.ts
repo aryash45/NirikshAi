@@ -9,6 +9,10 @@ import {
   InspectionCreate,
   InspectionResponse,
   CctvAnalysisResult,
+  SchemeChecklist,
+  InspectorProfile,
+  InspectionScheduleResponse,
+  EvidenceValidationResult,
 } from '../types';
 
 const API_BASE = '/api';
@@ -68,6 +72,49 @@ export async function analyzeCctvVideo(file: File): Promise<CctvAnalysisResult> 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(errorData.detail || 'Failed to analyze video');
+  }
+  return res.json();
+}
+
+export async function fetchSchemeChecklist(scheme: string): Promise<SchemeChecklist> {
+  const res = await fetch(`${API_BASE}/field-audit/checklists/${encodeURIComponent(scheme)}`);
+  if (!res.ok) throw new Error(`Failed to fetch checklist for ${scheme}: ${res.statusText}`);
+  return res.json();
+}
+
+export async function fetchInspectors(): Promise<InspectorProfile[]> {
+  const res = await fetch(`${API_BASE}/field-audit/inspectors`);
+  if (!res.ok) throw new Error(`Failed to fetch inspectors: ${res.statusText}`);
+  return res.json();
+}
+
+export async function scheduleInspection(institutionId: number, targetDate?: string): Promise<InspectionScheduleResponse> {
+  const res = await fetch(`${API_BASE}/field-audit/schedule`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ institution_id: institutionId, target_date: targetDate }),
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(errorData.detail || 'Failed to schedule inspection');
+  }
+  return res.json();
+}
+
+export async function validateEvidencePhoto(
+  file: File,
+  simulateDuplicate: boolean = false
+): Promise<EvidenceValidationResult> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const queryParam = simulateDuplicate ? '?simulate_duplicate=true' : '';
+  const res = await fetch(`${API_BASE}/field-audit/evidence/validate${queryParam}`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(errorData.detail || 'Failed to validate evidence');
   }
   return res.json();
 }
