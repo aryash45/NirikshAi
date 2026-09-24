@@ -1,4 +1,5 @@
-# NirikshAi: AI-Assisted Institutional Compliance & Risk-Based Inspection Platform
+# NirikshAi: AI-Assisted Institutional Compliance & Risk-Based Inspection App(Prototype Version)
+
 
 > **Smart India Hackathon 2026** — Automated institutional monitoring, CCTV headcount discrepancy auditing, and explainable risk-based inspector dispatch.
 
