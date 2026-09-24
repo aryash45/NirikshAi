@@ -98,7 +98,48 @@ def run_tests():
         cv = r.json()
         print(f"   -> peak={cv['peak_occupancy']}, avg={cv['avg_occupancy']}, points={len(cv['occupancy_timeline'])}, is_mock={cv['is_mock']}")
 
-        print("\nAll endpoints verified! Professional architecture is fully functional.")
+        # 7. Scheme Dynamic Checklist
+        r = client.get("/api/field-audit/checklists/Skill India")
+        assert ok("GET /api/field-audit/checklists/Skill India", r)
+        ch = r.json()
+        print(f"   -> scheme: {ch['scheme']}, items: {len(ch['items'])}")
+
+        # 8. Available Inspectors
+        r = client.get("/api/field-audit/inspectors")
+        assert ok("GET /api/field-audit/inspectors", r)
+        insps = r.json()
+        print(f"   -> {len(insps)} certified field auditors available")
+
+        # 9. Smart Inspector Dispatching
+        r = client.post("/api/field-audit/schedule", json={"institution_id": top["id"]})
+        assert ok("POST /api/field-audit/schedule", r)
+        disp = r.json()
+        print(f"   -> dispatched to: {disp['assigned_inspector']['name']} ({disp['dispatch_code']}), priority={disp['priority_multiplier']}x")
+
+        # 10. Evidence Validation & Duplicate Fraud Detection
+        import io
+        from PIL import Image
+        img = Image.new("RGB", (32, 32), color="red")
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG")
+        test_bytes = buf.getvalue()
+
+        # Regular evidence validation
+        files = {"file": ("inspection_photo.jpg", test_bytes, "image/jpeg")}
+        r = client.post("/api/field-audit/evidence/validate", files=files)
+        assert ok("POST /api/field-audit/evidence/validate (Authentic)", r)
+        ev1 = r.json()
+        print(f"   -> SHA-256: {ev1['sha256_hash'][:16]}..., dHash: {ev1['perceptual_hash']}, status: {ev1['integrity_status']}")
+
+        # Duplicate fraud simulation
+        files2 = {"file": ("recycled_photo.jpg", test_bytes, "image/jpeg")}
+        r = client.post("/api/field-audit/evidence/validate?simulate_duplicate=true", files=files2)
+        assert ok("POST /api/field-audit/evidence/validate (Duplicate Fraud Alert)", r)
+        ev2 = r.json()
+        assert ev2["duplicate_alert"]["is_duplicate"] is True
+        print(f"   -> Duplicate detected! Similarity: {ev2['duplicate_alert']['similarity_pct']}%, Alert: {ev2['duplicate_alert']['alert_message']}")
+
+        print("\nAll 10 endpoints verified! Professional architecture & field audit engine fully functional.")
 
     except Exception as e:
         print(f"\n[FAIL] Error during verification: {e}")

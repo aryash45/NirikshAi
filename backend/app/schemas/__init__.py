@@ -17,6 +17,16 @@ from app.schemas.institution import (
     InspectionResponse,
 )
 from app.schemas.cctv import OccupancyPoint, CctvAnalysisResult
+from app.schemas.evidence import (
+    DuplicateAlert,
+    ExifMetadata,
+    EvidenceValidationResult,
+    ChecklistItem,
+    SchemeChecklist,
+    InspectorProfile,
+    InspectionScheduleRequest,
+    InspectionScheduleResponse,
+)
 
 __all__ = [
     "AttendanceSeries",
@@ -32,4 +42,12 @@ __all__ = [
     "InspectionResponse",
     "OccupancyPoint",
     "CctvAnalysisResult",
+    "DuplicateAlert",
+    "ExifMetadata",
+    "EvidenceValidationResult",
+    "ChecklistItem",
+    "SchemeChecklist",
+    "InspectorProfile",
+    "InspectionScheduleRequest",
+    "InspectionScheduleResponse",
 ]

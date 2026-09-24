@@ -4,7 +4,7 @@ API v1 Router aggregating all endpoint sub-routers.
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import institutions, inspections, cctv, stats
+from app.api.v1.endpoints import institutions, inspections, cctv, stats, field_audit
 
 api_v1_router = APIRouter()
 
@@ -19,4 +19,7 @@ api_v1_router.include_router(
 )
 api_v1_router.include_router(
     stats.router, prefix="/stats", tags=["Statistics"]
+)
+api_v1_router.include_router(
+    field_audit.router, prefix="/field-audit", tags=["Field Audit & Evidence"]
 )
