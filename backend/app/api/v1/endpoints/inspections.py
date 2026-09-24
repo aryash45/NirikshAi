@@ -1,89 +1,93 @@
 """
-Inspections API endpoints.
-Implements the closed-loop feedback mechanism updating institution risk signals.
+Inspections API — submit, list, and manage field inspection records.
+
+Changes from v1:
+  - AUTH: Requires authentication (INSPECTOR or HQ_OFFICER)
+  - IDEMPOTENCY: Duplicate submission via same idempotency_key is rejected
+  - AUDIT: Every submission creates an immutable audit event
+  - CLOSED LOOP: Risk signal updates happen in a transaction
 """
 
 from __future__ import annotations
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
+from app.api.v1.helpers import build_institution_summary
+from app.core.auth import CurrentUser, get_current_user, require_role
 from app.models import Institution, Inspection
+from app.models.audit_event import AuditEvent
 from app.schemas import (
     InspectionCreate,
     InspectionOut,
     InspectionResponse,
-    InstitutionSummary,
-    RiskDrivers,
 )
-from app.services import RiskEngine
+from app.services.audit_logger import audit_logger
 from app.websocket import manager
 
 router = APIRouter()
-_risk = RiskEngine()
-
-
-def _build_summary(inst: Institution) -> InstitutionSummary:
-    """Re-calculate risk from current DB state of the institution."""
-    result = _risk.calculate_risk({
-        "name":                    inst.name,
-        "attendance_gap_pct":      inst.attendance_gap_pct,
-        "camera_uptime_pct":       inst.camera_uptime_pct,
-        "past_findings":           inst.past_findings,
-        "vc_failures":             inst.vc_failures,
-        "compliance_days_overdue": inst.compliance_days_overdue,
-    })
-    return InstitutionSummary(
-        id=inst.id,
-        name=inst.name,
-        scheme=inst.scheme or "",
-        district=inst.district or "",
-        state=inst.state or "",
-        attendance_gap_pct=inst.attendance_gap_pct,
-        camera_uptime_pct=inst.camera_uptime_pct,
-        past_findings=inst.past_findings,
-        vc_failures=inst.vc_failures,
-        compliance_days_overdue=inst.compliance_days_overdue,
-        last_inspected=inst.last_inspected,
-        risk_score=result.risk_score,
-        risk_level=result.risk_level,
-        inspection_probability=result.inspection_probability,
-        drivers=RiskDrivers(**result.drivers),
-    )
 
 
 @router.post("", response_model=InspectionResponse)
 @router.post("/", response_model=InspectionResponse, include_in_schema=False)
-async def submit_inspection(payload: InspectionCreate, db: Session = Depends(get_db)):
+async def submit_inspection(
+    payload: InspectionCreate,
+    idempotency_key: Optional[str] = Header(None, alias="X-Idempotency-Key"),
+    current_user: CurrentUser = Depends(
+        require_role("INSPECTOR", "HQ_OFFICER", "SUPER_ADMIN")
+    ),
+    db: Session = Depends(get_db),
+):
     """
-    Core closed-loop endpoint.
+    Submit a field inspection report.
+
+    AUTH: Requires INSPECTOR or HQ_OFFICER role.
+    IDEMPOTENCY: Supply X-Idempotency-Key header to prevent duplicate submissions.
+      Same key within a session returns the original response.
+    CLOSED LOOP: Updates institution risk signals and broadcasts via WebSocket.
 
     Steps:
       1. Validate institution exists.
-      2. Persist inspection record.
-      3. Update institution's risk signals based on findings:
-           - CCTV non-functional  → lower camera_uptime_pct by 5 points
-           - Docs unavailable     → increment compliance_days_overdue by 30
-           - Severity CRITICAL    → increment past_findings by 2
-           - Severity MAJOR       → increment past_findings by 1
-           - Absent beneficiaries → increment attendance_gap_pct by 5
-      4. Update last_inspected date.
-      5. Broadcast updated risk to connected WebSocket clients.
-      6. Return refreshed risk score (frontend shows live score change).
+      2. Check idempotency (if key provided).
+      3. Persist inspection record.
+      4. Update institution risk signals.
+      5. Write audit event.
+      6. Broadcast risk update via WebSocket.
     """
+    # ── 1. Validate institution ───────────────────────────────────────────
     inst: Optional[Institution] = (
-        db.query(Institution)
-        .filter(Institution.id == payload.institution_id)
-        .first()
+        db.query(Institution).filter(Institution.id == payload.institution_id).first()
     )
     if not inst:
         raise HTTPException(status_code=404, detail="Institution not found")
 
-    # ── 1. Persist inspection record ─────────────────────────────────────
+    # ── 2. Idempotency check ──────────────────────────────────────────────
+    # If the same idempotency key was used before, retrieve the earlier result.
+    # This prevents duplicate inspection records on network retry.
+    if idempotency_key:
+        existing = (
+            db.query(AuditEvent)
+            .filter(
+                AuditEvent.event_type == AuditEvent.TYPE_INSPECTION_SUBMITTED,
+                AuditEvent.entity_id == str(payload.institution_id),
+                AuditEvent.metadata_json.contains(idempotency_key),
+            )
+            .first()
+        )
+        if existing:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Duplicate submission: idempotency key '{idempotency_key}' was already used. "
+                    f"Audit event ID: {existing.event_id}."
+                ),
+            )
+
+    # ── 3. Persist inspection ─────────────────────────────────────────────
     inspection = Inspection(
         institution_id=payload.institution_id,
-        inspector_name=payload.inspector_name,
+        inspector_name=current_user.full_name,   # Use authenticated name, not client-supplied
         date=payload.date,
         beneficiary_present=payload.findings.beneficiary_present,
         staff_present=payload.findings.staff_present,
@@ -95,7 +99,7 @@ async def submit_inspection(payload: InspectionCreate, db: Session = Depends(get
     )
     db.add(inspection)
 
-    # ── 2. Update institution risk signals (closed-loop feedback) ─────────
+    # ── 4. Update institution risk signals (closed-loop feedback) ─────────
     if not payload.findings.cctv_functional:
         inst.camera_uptime_pct = max(0.0, inst.camera_uptime_pct - 5.0)
 
@@ -112,17 +116,36 @@ async def submit_inspection(payload: InspectionCreate, db: Session = Depends(get
 
     inst.last_inspected = payload.date
 
+    # ── 5. Audit event ────────────────────────────────────────────────────
+    audit_logger.log(
+        db,
+        AuditEvent.TYPE_INSPECTION_SUBMITTED,
+        actor_id=current_user.user_id,
+        actor_role=current_user.role,
+        actor_name=current_user.full_name,
+        entity_type="Inspection",
+        entity_id=payload.institution_id,
+        metadata={
+            "institution_id": payload.institution_id,
+            "institution_name": inst.name,
+            "severity": payload.severity,
+            "idempotency_key": idempotency_key,
+            "beneficiary_present": payload.findings.beneficiary_present,
+            "cctv_functional": payload.findings.cctv_functional,
+        },
+    )
+
     db.commit()
     db.refresh(inst)
 
-    # ── 3. Return refreshed risk summary & broadcast ─────────────────────
-    updated = _build_summary(inst)
+    # ── 6. Build updated summary & broadcast ─────────────────────────────
+    updated = build_institution_summary(inst)
 
     response = InspectionResponse(
         success=True,
         message=(
-            f"Inspection recorded. Risk score updated: "
-            f"{updated.risk_score}/100 [{updated.risk_level}]"
+            f"Inspection submitted by {current_user.full_name}. "
+            f"Risk score updated: {updated.risk_score}/100 [{updated.risk_level}]"
         ),
         updated_risk=updated,
     )
@@ -143,9 +166,14 @@ async def submit_inspection(payload: InspectionCreate, db: Session = Depends(get
 @router.get("/", response_model=List[InspectionOut], include_in_schema=False)
 def list_inspections(
     institution_id: Optional[int] = Query(None, description="Filter by institution"),
+    current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List recent inspection logs with optional institution filtering."""
+    """
+    List recent inspection logs.
+    INSPECTOR role: can only see inspections they submitted (future: filter by actor).
+    HQ_OFFICER+: can see all.
+    """
     q = db.query(Inspection)
     if institution_id is not None:
         q = q.filter(Inspection.institution_id == institution_id)

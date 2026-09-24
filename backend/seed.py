@@ -184,9 +184,23 @@ def run():
         )
         db.add(insp)
 
+        # Seed Genesis Audit Event
+        from app.services.audit_logger import audit_logger
+        from app.models.audit_event import AuditEvent
+        audit_logger.log(
+            db,
+            AuditEvent.TYPE_ADMIN_ACTION,
+            actor_id="sys-000",
+            actor_role="SUPER_ADMIN",
+            actor_name="System Initializer",
+            entity_type="System",
+            entity_id="genesis",
+            metadata={"description": "System database initialized with baseline scheme data"},
+        )
+
         db.commit()
         print(f"Seeded {len(INSTITUTIONS)} institutions with attendance records.")
-        print("demo.db ready.")
+        print("demo.db ready with Genesis Audit Event.")
     except Exception as e:
         db.rollback()
         print(f"Seed failed: {e}")

@@ -3,9 +3,10 @@ uvicorn[standard]>=0.30.0
 pydantic>=2.9.0
 sqlalchemy>=2.0.30
 python-multipart>=0.0.9
-numpy
-pandas
 httpx>=0.27.0
-# Optional: YOLO for real CCTV analysis (uncomment if GPU available)
-# ultralytics
-# opencv-python
+Pillow>=10.0.0
+
+# Optional: YOLOv8 for real CCTV person detection (requires internet on first run)
+# Uncomment on machines with OpenCV + sufficient RAM:
+# ultralytics>=8.0.0
+# opencv-python>=4.8.0
